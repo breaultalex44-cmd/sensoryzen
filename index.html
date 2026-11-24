@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sensory Zen — Interactive Satisfying Lobbies</title>
+    <!-- Tailwind CSS for crisp glassmorphic HUD layout -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            transition: background-color 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            cursor: crosshair;
+        }
+        /* Glassmorphic UI transitions */
+        .glass-panel {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .hud-hidden {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(12px);
+        }
+        .hud-top-hidden {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(-12px);
+        }
+        /* Custom subtle scrollbar for mobile lobby bar */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .swatch-btn {
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+        }
+        .swatch-btn:hover {
+            transform: scale(1.16);
+        }
+        .swatch-active {
+            transform: scale(1.22);
+        }
+    </style>
+</head>
+<body class="bg-[#0B1120]">
+
+    <!-- Fullscreen Interactive Canvas -->
+    <canvas id="sensoryCanvas"></canvas>
+
+    <!-- Minimal Corner Reveal Button (Always subtly accessible when HUD is hidden) -->
+    <button id="revealHudBtn" title="Show Controls (H)"
+        class="fixed top-4 right-4 z-30 p-3 rounded-full glass-panel opacity-0 pointer-events-none transition-all duration-300 shadow-lg border"
+        aria-label="Show Interface">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+    </button>
+
+    <!-- Top Floating Bar: Title, 8 Solid Background Swatches, Sound & Hide UI -->
+    <header id="topHud" class="fixed top-0 left-0 right-0 z-20 p-3 sm:p-5 flex flex-col md:flex-row items-center justify-between gap-3 pointer-events-none">
+        
+        <!-- Brand / Current Lobby Info Pill -->
+        <div id="brandPill" class="glass-panel pointer-events-auto px-4 py-2.5 rounded-2xl border shadow-lg flex items-center gap-3">
+            <div class="w-2.5 h-2.5 rounded-full animate-pulse" id="statusDot"></div>
+            <div>
+                <h1 id="lobbyTitle" class="text-sm sm:text-base font-semibold tracking-tight leading-none" style="font-family: 'Plus Jakarta Sans', sans-serif;">
+                    Zen Ripples
+                </h1>
+                <p id="lobbySubtitle" class="text-[11px] opacity-75 mt-0.5 leading-none">
+                    Click or glide across the surface
+                </p>
+            </div>
+        </div>
+
+        <!-- Center: 8 Solid Single-Color Background Options -->
+        <div id="palettePill" class="glass-panel pointer-events-auto px-3.5 py-2 rounded-full border shadow-lg flex items-center gap-2 sm:gap-2.5">
+            <span class="text-[11px] font-medium uppercase tracking-wider opacity-70 hidden sm:inline mr-1">Canvas</span>
+            <div id="colorSwatches" class="flex items-center gap-2">
+                <!-- Populated dynamically via JS for all 8 solid color options -->
+            </div>
+        </div>
+
+        <!-- Right: Utility Controls (Lobby Action, Sound Toggle, Zen Hide Mode) -->
+        <div id="controlsPill" class="glass-panel pointer-events-auto px-2.5 py-1.5 rounded-2xl border shadow-lg flex items-center gap-1.5">
+            <!-- Contextual Action Button (e.g. Refill Bubbles / Clear Pebbles / Clear Orbs) -->
+            <button id="contextActionBtn" title="Reset / Refill Current Lobby"
+                class="px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 hover:opacity-80 active:scale-95">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span id="contextActionLabel">Clear</span>
+            </button>
+
+            <div class="w-px h-4 opacity-20 bg-current"></div>
+
+            <!-- Sound Toggle Button -->
+            <button id="soundToggleBtn" title="Toggle Ambient Procedural Audio"
+                class="p-2 rounded-xl transition-all hover:opacity-80 active:scale-95 flex items-center gap-1.5"
+                aria-label="Toggle Sound">
+                <!-- Sound On Icon -->
+                <svg id="soundOnIcon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                <!-- Sound Off Icon -->
+                <svg id="soundOffIcon" class="w-4 h-4 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                </svg>
+            </button>
+
+            <!-- Hide HUD (Pure Immersion) Button -->
+            <button id="hideHudBtn" title="Hide UI for Full Immersion"
+                class="p-2 rounded-xl transition-all hover:opacity-80 active:scale-95"
+                aria-label="Hide Interface">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Bottom Floating Dock: 5 Satisfying Interactive Lobbies -->
+    <nav id="bottomHud" class="fixed bottom-4 sm:bottom-6 left-0 right-0 z-20 px-3 flex justify-center pointer-events-none">
+        <div id="lobbyDock" class="glass-panel pointer-events-auto p-1.5 rounded-2xl border shadow-2xl flex items-center gap-1 sm:gap-1.5 max-w-full overflow-x-auto no-scrollbar">
+            <!-- Populated dynamically via JS -->
+        </div>
+    </nav>
+
+    <script>
+    /**
+     * ============================================================================
+     * SENSORY ZEN — INTERACTIVE RELAXATION & SATISFYING LOBBIES ENGINE
+     * ============================================================================
+     * Architecture:
+     * 1. ThemeManager: Manages 8 single-color solid backgrounds & dynamic high-contrast
+     *    luminous strokes/accents for both dark and light surfaces.
+     * 2. SoundEngine: Procedural Web Audio API synthesizer generating pentatonic
+     *    water chimes, tactile bubble pops, sand grains, and soft harmonic collisions.
+     * 3. Lobbies (5 distinct physics/visual simulations):
+     *    - ripples: Zen Ripples (Multi-ring interference waves, reflections & droplets)
+     *    - sand: Kinetic Sand & Pebbles (Carvable tactile sand bed + glossy settling stones)
+     *    - silk: Magnetic Silk Grid (Elastic spring-lattice mesh that swirls & snaps back)
+     *    - bubbles: Bubble Pop (Satisfying glossy bubble wrap grid with particle bursts)
+     *    - orbs: Gravity Orbs (Luminous harmonic spheres that orbit, bounce & emit pulses)
+     */
+
+    // ----------------------------------------------------------------------------
+    // 1. 8 SOLID BACKGROUND COLOR OPTIONS & ADAPTIVE CONTRAST PALETTES
+    // ----------------------------------------------------------------------------
+    const THEMES = [
+        {
+            id: 'midnight',
+            name: 'Deep Midnight',
+            bg: '#0B1120',
+            isDark: true,
+            primary: '#38BDF8',      // Luminous Sky Cyan
+            secondary: '#818CF8',    // Soft Indigo Glow
+            accent: '#7DD3FC',
+            strokeRgb: '125, 211, 252',
+            secondaryRgb: '165, 180, 252',
+            hudBg: 'rgba(15, 23, 42, 0.65)',
+            hudBorder: 'rgba(148, 163, 184, 0.2)',
+            hudText: '#F1F5F9'
+        },
+        {
+            id: 'obsidian',
+            name: 'Pure Obsidian',
+            bg: '#09090B',
+            isDark: true,
+            primary: '#F4F4F5',      // Crisp Pearl White
+            secondary: '#A1A1AA',    // Silver Mist
+            accent: '#E4E4E7',
+            strokeRgb: '244, 244, 245',
+            secondaryRgb: '161, 161, 170',
+            hudBg: 'rgba(24, 24, 27, 0.72)',
+            hudBorder: 'rgba(255, 255, 255, 0.14)',
+            hudText: '#FAFAFA'
+        },
+        {
+            id: 'alabaster',
+            name: 'Soft Alabaster',
+            bg: '#F6F4EF',
+            isDark: false,
+            primary: '#1E293B',      // Deep Slate Ink
+            secondary: '#0D9488',    // Serene Teal Accent
+            accent: '#334155',
+            strokeRgb: '30, 41, 59',
+            secondaryRgb: '13, 148, 136',
+            hudBg: 'rgba(255, 255, 255, 0.72)',
+            hudBorder: 'rgba(30, 41, 59, 0.12)',
+            hudText: '#1E293B'
+        },
+        {
+            id: 'sage',
+            name: 'Sage Mist',
+            bg: '#DCE4DC',
+            isDark: false,
+            primary: '#1B4332',      // Botanical Forest
+            secondary: '#2D6A4F',    // Moss Green
+            accent: '#1B4332',
+            strokeRgb: '27, 67, 50',
+            secondaryRgb: '64, 145, 108',
+            hudBg: 'rgba(244, 248, 244, 0.72)',
+            hudBorder: 'rgba(27, 67, 50, 0.14)',
+            hudText: '#143326'
+        },
+        {
+            id: 'terracotta',
+            name: 'Warm Terracotta',
+            bg: '#C86D51',
+            isDark: true,
+            primary: '#FFF7ED',      // Warm Cream Silk
+            secondary: '#FED7AA',    // Sunlit Apricot
+            accent: '#FFEDD5',
+            strokeRgb: '255, 247, 237',
+            secondaryRgb: '254, 215, 170',
+            hudBg: 'rgba(124, 45, 18, 0.45)',
+            hudBorder: 'rgba(255, 237, 213, 0.25)',
+            hudText: '#FFF7ED'
+        },
+        {
+            id: 'teal',
+            name: 'Ocean Teal',
+            bg: '#0E4D5C',
+            isDark: true,
+            primary: '#99F6E4',      // Bioluminescent Aqua
+            secondary: '#5EEAD4',    // Seafoam
+            accent: '#CCFBF1',
+            strokeRgb: '153, 246, 228',
+            secondaryRgb: '94, 234, 212',
+            hudBg: 'rgba(8, 51, 68, 0.55)',
+            hudBorder: 'rgba(153, 246, 228, 0.22)',
+            hudText: '#F0FDFA'
+        },
+        {
+            id: 'lavender',
+            name: 'Dusty Lavender',
+            bg: '#E3DCEB',
+            isDark: false,
+            primary: '#3B1E54',      // Deep Plum Velvet
+            secondary: '#6D28D9',    // Violet Bloom
+            accent: '#4C1D95',
+            strokeRgb: '59, 30, 84',
+            secondaryRgb: '109, 40, 217',
+            hudBg: 'rgba(248, 245, 252, 0.72)',
+            hudBorder: 'rgba(59, 30, 84, 0.14)',
+            hudText: '#2E1065'
+        },
+        {
+            id: 'charcoal',
+            name: 'Charcoal Slate',
+            bg: '#242933',
+            isDark: true,
+            primary: '#FBBF24',      // Warm Amber Gold
+            secondary: '#F59E0B',    // Honey Glow
+            accent: '#FDE68A',
+            strokeRgb: '251, 191, 36',
+            secondaryRgb: '253, 230, 138',
+            hudBg: 'rgba(24, 28, 36, 0.68)',
+            hudBorder: 'rgba(251, 191, 36, 0.2)',
+            hudText: '#F8FAFC'
+        }
+    ];
+
+    // ----------------------------------------------------------------------------
+    // 2. LOBBY DEFINITIONS
+    // ----------------------------------------------------------------------------
+    const LOBBIES = [
+        {
+            id: 'ripples',
+            name: 'Zen Ripples',
+            subtitle: 'Click or glide to send harmonic water ripples',
+            actionLabel: 'Calm Surface',
+            icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" stroke-opacity="0.65"/><circle cx="12" cy="12" r="10" stroke-opacity="0.35"/></svg>`
+        },
+        {
+            id: 'sand',
+            name: 'Kinetic Sand',
+            subtitle: 'Drag to carve silky grooves · Click to drop smooth stones',
+            actionLabel: 'Smooth Sand',
+            icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 15c2.483 0 4.345-3 4.345-3s1.862 3 4.345 3c2.482 0 4.965-3 4.965-3s2.483 3 4.345 3M3 19c2.483 0 4.345-3 4.345-3s1.862 3 4.345 3c2.482 0 4.965-3 4.965-3s2.483 3 4.345 3"/></svg>`
+        },
+        {
+            id: 'silk',
+            name: 'Magnetic Silk',
+            subtitle: 'Move through the woven field · Click to send shockwaves',
+            actionLabel: 'Settle Grid',
+            icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16M8 4v16M16 4v16"/></svg>`
+        },
+        {
+            id: 'bubbles',
+            name: 'Bubble Pop',
+            subtitle: 'Click or swipe across tactile bubbles to pop them',
+            actionLabel: 'Refill Sheet',
+            icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.5"/><circle cx="16.5" cy="9.5" r="2.5"/><circle cx="11" cy="16.5" r="3"/></svg>`
+        },
+        {
+            id: 'orbs',
+            name: 'Gravity Orbs',
+            subtitle: 'Click to release harmonic orbs · Drag to fling gently',
+            actionLabel: 'Clear Orbs',
+            icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41"/></svg>`
+        }
+    ];
+
+    // ----------------------------------------------------------------------------
+    // 3. PROCEDURAL WEB AUDIO ENGINE (Soothing Chimes, Pops & Tactile Audio)
+    // ----------------------------------------------------------------------------
+    class SoundEngine {
+        constructor() {
+            this.ctx = null;
+            this.enabled = true;
+            this.lastChimeTime = 0;
+            this.lastSandTime = 0;
+            // C Major Pentatonic frequencies across 3 octaves for guaranteed harmony
+            this.pentatonic = [
+                261.63, 293.66, 329.63, 392.00, 440.00,
+                523.25, 587.33, 659.25, 783.99, 880.00,
+                1046.50, 1174.66
+            ];
+        }
+
+        init() {
+            if (!this.ctx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    this.ctx = new AudioCtx();
+                }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+        }
+
+        toggle() {
+            this.enabled = !this.enabled;
+            if (this.enabled) this.init();
+            return this.enabled;
+        }
+
+        // Soft soothing water droplet / glass chime
+        playRippleChime(normalizedY = 0.5, isStrong = true) {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            if (!isStrong && now - this.lastChimeTime < 0.14) return;
+            this.lastChimeTime = now;
+
+            // Map Y position (higher on screen = higher pitch) to pentatonic scale
+            const idx = Math.max(0, Math.min(this.pentatonic.length - 1,
+                Math.floor((1 - normalizedY) * this.pentatonic.length)));
+            const freq = this.pentatonic[idx];
+
+            const osc = this.ctx.createOscillator();
+            const subOsc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+            // Subtle water pitch bend upward
+            osc.frequency.exponentialRampToValueAtTime(freq * 1.012, now + 0.35);
+
+            subOsc.type = 'triangle';
+            subOsc.frequency.setValueAtTime(freq * 2, now);
+
+            const subGain = this.ctx.createGain();
+            subGain.gain.setValueAtTime(isStrong ? 0.025 : 0.01, now);
+            subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+
+            const peakGain = isStrong ? 0.11 : 0.04;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.linearRampToValueAtTime(peakGain, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + (isStrong ? 1.8 : 0.9));
+
+            osc.connect(gain);
+            subOsc.connect(subGain);
+            subGain.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start(now);
+            subOsc.start(now);
+            osc.stop(now + 1.9);
+            subOsc.stop(now + 0.7);
+        }
+
+        // Crisp, satisfying bubble pop sound
+        playBubblePop(pitchFactor = 1.0) {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            const baseFreq = (320 + Math.random() * 180) * pitchFactor;
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(baseFreq * 0.65, now);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 2.1, now + 0.065);
+
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.14, now + 0.008);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.08);
+        }
+
+        // Soft stone thud / tactile sand grain sound
+        playStoneDrop(size = 1) {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            const startFreq = 160 / Math.max(0.7, size);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(startFreq, now);
+            osc.frequency.exponentialRampToValueAtTime(48, now + 0.18);
+
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.24);
+        }
+
+        // Subtle ASMR sand brush whisper
+        playSandGrain() {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            if (now - this.lastSandTime < 0.05) return;
+            this.lastSandTime = now;
+
+            const bufferSize = this.ctx.sampleRate * 0.04;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+            }
+
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 1800 + Math.random() * 900;
+            filter.Q.value = 2.5;
+
+            const gain = this.ctx.createGain();
+            gain.gain.value = 0.025;
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start(now);
+        }
+
+        // Harmonic bell ping for Gravity Orbs collisions
+        playOrbCollision(velocity = 1, radius = 20) {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            if (now - this.lastChimeTime < 0.06) return;
+            this.lastChimeTime = now;
+
+            const idx = Math.floor(Math.max(0, Math.min(this.pentatonic.length - 1, (45 - radius) / 3)));
+            const freq = this.pentatonic[idx];
+
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+
+            const vol = Math.min(0.08, Math.max(0.01, velocity * 0.015));
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(vol, now + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.85);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.9);
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 4. APPLICATION STATE & CANVAS SETUP
+    // ----------------------------------------------------------------------------
+    const canvas = document.getElementById('sensoryCanvas');
+    const ctx = canvas.getContext('2d');
+    const sound = new SoundEngine();
+
+    let currentTheme = THEMES[0];
+    let currentLobby = 'ripples';
+    let hudVisible = true;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    // Unified Pointer State
+    const pointer = {
+        x: width / 2,
+        y: height / 2,
+        px: width / 2,
+        py: height / 2,
+        vx: 0,
+        vy: 0,
+        isDown: false,
+        downX: 0,
+        downY: 0,
+        lastSpawnX: 0,
+        lastSpawnY: 0
+    };
+
+    function resizeCanvas() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Re-initialize grid-based lobbies smoothly on resize
+        initSilkGrid();
+        initBubbleGrid();
+    }
+
+    // ----------------------------------------------------------------------------
+    // 5. LOBBY 1: ZEN RIPPLES (Multi-Ring Interference & Wall Reflections)
+    // ----------------------------------------------------------------------------
+    let ripples = [];
+    let rippleDroplets = [];
+
+    class Ripple {
+        constructor(x, y, options = {}) {
+            this.x = x;
+            this.y = y;
+            this.radius = options.startRadius || 4;
+            this.maxRadius = options.maxRadius || Math.max(width, height) * 0.58;
+            this.speed = options.speed || 2.65;
+            this.lineWidth = options.lineWidth || 2.4;
+            this.alpha = options.alpha || 0.85;
+            this.rings = options.rings || 3; // Multi-layered concentric harmonic rings
+            this.ringSpacing = options.ringSpacing || 18;
+            this.isReflection = options.isReflection || false;
+            this.reflectedWalls = { left: false, right: false, top: false, bottom: false };
+            this.hueShift = options.hueShift || false;
+        }
+
+        update() {
+            this.radius += this.speed;
+            // Subtle deceleration as water wave disperses
+            this.speed *= 0.994;
+
+            const progress = this.radius / this.maxRadius;
+            this.currentAlpha = this.alpha * Math.pow(1 - Math.min(1, progress), 1.45);
+
+            // Subtle boundary reflection for primary strong ripples
+            if (!this.isReflection && this.currentAlpha > 0.25) {
+                if (!this.reflectedWalls.left && this.x - this.radius <= 0) {
+                    this.reflectedWalls.left = true;
+                    ripples.push(new Ripple(-this.x, this.y, {
+                        startRadius: this.radius,
+                        maxRadius: this.maxRadius * 0.75,
+                        speed: this.speed * 0.85,
+                        lineWidth: this.lineWidth * 0.65,
+                        alpha: this.currentAlpha * 0.45,
+                        rings: 2,
+                        isReflection: true
+                    }));
+                }
+                if (!this.reflectedWalls.right && this.x + this.radius >= width) {
+                    this.reflectedWalls.right = true;
+                    ripples.push(new Ripple(width * 2 - this.x, this.y, {
+                        startRadius: this.radius,
+                        maxRadius: this.maxRadius * 0.75,
+                        speed: this.speed * 0.85,
+                        lineWidth: this.lineWidth * 0.65,
+                        alpha: this.currentAlpha * 0.45,
+                        rings: 2,
+                        isReflection: true
+                    }));
+                }
+                if (!this.reflectedWalls.top && this.y - this.radius <= 0) {
+                    this.reflectedWalls.top = true;
+                    ripples.push(new Ripple(this.x, -this.y, {
+                        startRadius: this.radius,
+                        maxRadius: this.maxRadius * 0.75,
+                        speed: this.speed * 0.85,
+                        lineWidth: this.lineWidth * 0.65,
+                        alpha: this.currentAlpha * 0.45,
+                        rings: 2,
+                        isReflection: true
+                    }));
+                }
+                if (!this.reflectedWalls.bottom && this.y + this.radius >= height) {
+                    this.reflectedWalls.bottom = true;
+                    ripples.push(new Ripple(this.x, height * 2 - this.y, {
+                        startRadius: this.radius,
+                        maxRadius: this.maxRadius * 0.75,
+                        speed: this.speed * 0.85,
+                        lineWidth: this.lineWidth * 0.65,
+                        alpha: this.currentAlpha * 0.45,
+                        rings: 2,
+                        isReflection: true
+                    }));
+                }
+            }
+
+            return this.radius < this.maxRadius && this.currentAlpha > 0.005;
+        }
+
+        draw(ctx) {
+            for (let i = 0; i < this.rings; i++) {
+                const r = this.radius - i * this.ringSpacing;
+                if (r <= 1) continue;
+
+                const ringFade = 1 - (i / (this.rings + 0.5));
+                const alpha = this.currentAlpha * ringFade;
+                if (alpha <= 0.005) continue;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+
+                const rgb = (i % 2 === 1) ? currentTheme.secondaryRgb : currentTheme.strokeRgb;
+                ctx.strokeStyle = `rgba(${rgb}, ${alpha.toFixed(3)})`;
+                ctx.lineWidth = Math.max(0.6, this.lineWidth * ringFade * (1 - (this.radius / this.maxRadius) * 0.45));
+                ctx.stroke();
+            }
+        }
+    }
+
+    function spawnZenRipple(x, y, isClick = true) {
+        if (isClick) {
+            // Primary luminous wave + delayed soft inner harmonic echo
+            ripples.push(new Ripple(x, y, {
+                startRadius: 3,
+                maxRadius: Math.max(width, height) * 0.65,
+                speed: 2.9,
+                lineWidth: 2.8,
+                alpha: 0.92,
+                rings: 4,
+                ringSpacing: 20
+            }));
+            // Center droplet sparkle burst
+            for (let i = 0; i < 8; i++) {
+                const angle = (Math.PI * 2 * i) / 8 + Math.random() * 0.4;
+                const spd = 0.8 + Math.random() * 1.4;
+                rippleDroplets.push({
+                    x, y,
+                    vx: Math.cos(angle) * spd,
+                    vy: Math.sin(angle) * spd,
+                    life: 1.0,
+                    size: 1.8 + Math.random() * 1.5
+                });
+            }
+            sound.playRippleChime(y / height, true);
+        } else {
+            // Smooth trailing glide wake
+            ripples.push(new Ripple(x, y, {
+                startRadius: 2,
+                maxRadius: Math.min(width, height) * 0.34,
+                speed: 2.1,
+                lineWidth: 1.7,
+                alpha: 0.52,
+                rings: 2,
+                ringSpacing: 14,
+                isReflection: true
+            }));
+            sound.playRippleChime(y / height, false);
+        }
+    }
+
+    function updateAndDrawRipples() {
+        // Soft ambient raindrop ripple every few seconds if idle and screen is empty
+        if (ripples.length === 0 && Math.random() < 0.015) {
+            ripples.push(new Ripple(
+                width * (0.2 + Math.random() * 0.6),
+                height * (0.2 + Math.random() * 0.6),
+                {
+                    startRadius: 2,
+                    maxRadius: Math.min(width, height) * 0.35,
+                    speed: 1.8,
+                    lineWidth: 1.8,
+                    alpha: 0.45,
+                    rings: 3,
+                    ringSpacing: 16,
+                    isReflection: true
+                }
+            ));
+        }
+
+        // Draw subtle luminous glow at ripple intersections for extra richness
+        ripples = ripples.filter(r => {
+            const alive = r.update();
+            if (alive) r.draw(ctx);
+            return alive;
+        });
+
+        // Update & draw tiny droplet sparks
+        rippleDroplets = rippleDroplets.filter(d => {
+            d.x += d.vx;
+            d.y += d.vy;
+            d.vx *= 0.94;
+            d.vy *= 0.94;
+            d.life -= 0.025;
+            if (d.life <= 0) return false;
+
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, d.size * d.life, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${currentTheme.strokeRgb}, ${(d.life * 0.75).toFixed(3)})`;
+            ctx.fill();
+            return true;
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 6. LOBBY 2: KINETIC SAND & SMOOTH ZEN PEBBLES
+    // ----------------------------------------------------------------------------
+    let sandStrokes = [];
+    let pebbles = [];
+    let sandParticles = [];
+
+    function carveSand(x, y, px, py) {
+        const dist = Math.hypot(x - px, y - py);
+        if (dist < 1) return;
+
+        sandStrokes.push({
+            x1: px, y1: py,
+            x2: x, y2: y,
+            width: Math.min(34, 16 + dist * 0.35),
+            alpha: 1.0
+        });
+
+        // Cap strokes to maintain silky 60fps
+        if (sandStrokes.length > 450) {
+            sandStrokes.shift();
+        }
+
+        // Emit tactile sand grains along rake path
+        const count = Math.min(6, Math.ceil(dist / 5));
+        for (let i = 0; i < count; i++) {
+            const t = Math.random();
+            sandParticles.push({
+                x: px + (x - px) * t + (Math.random() - 0.5) * 14,
+                y: py + (y - py) * t + (Math.random() - 0.5) * 14,
+                vx: (Math.random() - 0.5) * 1.4,
+                vy: (Math.random() - 0.5) * 1.4,
+                life: 1.0,
+                size: 1.2 + Math.random() * 1.8
+            });
+        }
+        sound.playSandGrain();
+    }
+
+    function dropZenPebble(x, y) {
+        const radius = 16 + Math.random() * 18;
+        pebbles.push({
+            x, y,
+            targetRadius: radius,
+            currentRadius: radius * 1.45, // Drops from slightly above
+            scaleVel: 0,
+            rotation: Math.random() * Math.PI * 2,
+            aspect: 0.78 + Math.random() * 0.2,
+            ringsAlpha: 0.85,
+            ringsRadius: radius
+        });
+        if (pebbles.length > 28) pebbles.shift();
+        sound.playStoneDrop(radius / 22);
+    }
+
+    function updateAndDrawSand() {
+        // Subtle ambient sand grain texture dots
+        ctx.fillStyle = `rgba(${currentTheme.strokeRgb}, 0.045)`;
+        const step = 36;
+        for (let gx = 18; gx < width; gx += step) {
+            for (let gy = 18; gy < height; gy += step) {
+                const offset = ((gx * 13 + gy * 7) % 11) - 5;
+                ctx.fillRect(gx + offset, gy - offset, 1.5, 1.5);
+            }
+        }
+
+        // Draw carved rake grooves with dual ridge highlights
+        ctx.lineCap = 'round';
+        for (let i = 0; i < sandStrokes.length; i++) {
+            const s = sandStrokes[i];
+            // Outer raised ridge
+            ctx.beginPath();
+            ctx.moveTo(s.x1, s.y1);
+            ctx.lineTo(s.x2, s.y2);
+            ctx.strokeStyle = `rgba(${currentTheme.strokeRgb}, 0.14)`;
+            ctx.lineWidth = s.width;
+            ctx.stroke();
+
+            // Inner carved furrow
+            ctx.beginPath();
+            ctx.moveTo(s.x1, s.y1);
+            ctx.lineTo(s.x2, s.y2);
+            ctx.strokeStyle = `rgba(${currentTheme.secondaryRgb}, 0.24)`;
+            ctx.lineWidth = s.width * 0.42;
+            ctx.stroke();
+        }
+
+        // Sand grain particles
+        sandParticles = sandParticles.filter(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.9;
+            p.vy *= 0.9;
+            p.life -= 0.035;
+            if (p.life <= 0) return false;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${currentTheme.strokeRgb}, ${(p.life * 0.6).toFixed(3)})`;
+            ctx.fill();
+            return true;
+        });
+
+        // Draw smooth Zen Pebbles & concentric sand rings around them
+        pebbles.forEach(p => {
+            // Spring settle animation
+            const force = (p.targetRadius - p.currentRadius) * 0.18;
+            p.scaleVel = (p.scaleVel + force) * 0.72;
+            p.currentRadius += p.scaleVel;
+
+            if (p.ringsAlpha > 0.01) {
+                p.ringsRadius += 0.9;
+                p.ringsAlpha *= 0.965;
+            }
+
+            // Concentric sand rings around pebble
+            for (let r = 1; r <= 3; r++) {
+                ctx.beginPath();
+                ctx.ellipse(
+                    p.x, p.y,
+                    p.targetRadius + r * 11,
+                    (p.targetRadius + r * 11) * p.aspect,
+                    p.rotation, 0, Math.PI * 2
+                );
+                ctx.strokeStyle = `rgba(${currentTheme.strokeRgb}, ${(0.22 - r * 0.05).toFixed(3)})`;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // Pebble drop shadow
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+
+            ctx.beginPath();
+            ctx.ellipse(3, 5, p.currentRadius, p.currentRadius * p.aspect, 0, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+            ctx.fill();
+
+            // Smooth river stone body
+            const grad = ctx.createRadialGradient(
+                -p.currentRadius * 0.3, -p.currentRadius * 0.3, p.currentRadius * 0.1,
+                0, 0, p.currentRadius
+            );
+            grad.addColorStop(0, `rgba(${currentTheme.strokeRgb}, 0.92)`);
+            grad.addColorStop(0.7, `rgba(${currentTheme.secondaryRgb}, 0.65)`);
+            grad.addColorStop(1, `rgba(${currentTheme.strokeRgb}, 0.38)`);
+
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.currentRadius, p.currentRadius * p.aspect, 0, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = `rgba(${currentTheme.strokeRgb}, 0.5)`;
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+
+            ctx.restore();
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 7. LOBBY 3: MAGNETIC SILK GRID (Elastic Harmonic Mesh)
+    // ----------------------------------------------------------------------------
+    let silkNodes = [];
+    let silkCols = 0;
+    let silkRows = 0;
+
+    function initSilkGrid() {
+        silkNodes = [];
+        const spacing = width < 640 ? 34 : 42;
+        silkCols = Math.ceil(width / spacing) + 1;
+        silkRows = Math.ceil(height / spacing) + 1;
+
+        const offsetX = (width - (silkCols - 1) * spacing) / 2;
+        const offsetY = (height - (silkRows - 1) * spacing) / 2;
+
+        for (let r = 0; r < silkRows; r++) {
+            for (let c = 0; c < silkCols; c++) {
+                const ox = offsetX + c * spacing;
+                const oy = offsetY + r * spacing;
+                silkNodes.push({
+                    ox, oy,
+                    x: ox, y: oy,
+                    vx: 0, vy: 0
+                });
+            }
+        }
+    }
+
+    function impulseSilkGrid(cx, cy, strength = 26) {
+        const radius = 210;
+        for (let i = 0; i < silkNodes.length; i++) {
+            const n = silkNodes[i];
+            const dx = n.x - cx;
+            const dy = n.y - cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist < radius && dist > 0.1) {
+                const falloff = Math.pow(1 - dist / radius, 2);
+                n.vx += (dx / dist) * strength * falloff;
+                n.vy += (dy / dist) * strength * falloff;
+            }
+        }
+        sound.playRippleChime(cy / height, true);
+    }
+
+    function updateAndDrawSilk() {
+        const influenceRadius = 155;
+        const springK = 0.055;
+        const damping = 0.86;
+
+        // Physics update for each elastic node
+        for (let i = 0; i < silkNodes.length; i++) {
+            const n = silkNodes[i];
+
+            // Spring force back to home position
+            const homeDx = n.ox - n.x;
+            const homeDy = n.oy - n.y;
+            n.vx += homeDx * springK;
+            n.vy += homeDy * springK;
+
+            // Cursor magnetic swirl / gentle push
+            const mdx = n.x - pointer.x;
+            const mdy = n.y - pointer.y;
+            const mDist = Math.hypot(mdx, mdy);
+
+            if (mDist < influenceRadius && mDist > 0.1) {
+                const force = (1 - mDist / influenceRadius);
+                const push = pointer.isDown ? 3.2 : 1.35;
+                // Radial repulsion + subtle tangential swirl
+                n.vx += (mdx / mDist) * force * push - (mdy / mDist) * force * 0.45;
+                n.vy += (mdy / mDist) * force * push + (mdx / mDist) * force * 0.45;
+            }
+
+            n.vx *= damping;
+            n.vy *= damping;
+            n.x += n.vx;
+            n.y += n.vy;
+        }
+
+        // Draw woven silk threads
+        ctx.lineWidth = 1.25;
+        for (let r = 0; r < silkRows; r++) {
+            for (let c = 0; c < silkCols; c++) {
+                const idx = r * silkCols + c;
+                const n = silkNodes[idx];
+                const disp = Math.hypot(n.x - n.ox, n.y - n.oy);
+                const tension = Math.min(1, disp / 38);
+
+                // Horizontal thread
+                if (c < silkCols - 1) {
+                    const right = silkNodes[idx + 1];
+                    ctx.beginPath();
+                    ctx.moveTo(n.x, n.y);
+                    ctx.lineTo(right.x, right.y);
+                    ctx.strokeStyle = tension > 0.15
+                        ? `rgba(${currentTheme.secondaryRgb}, ${(0.22 + tension * 0.65).toFixed(3)})`
+                        : `rgba(${currentTheme.strokeRgb}, 0.2)`;
+                    ctx.stroke();
+                }
+
+                // Vertical thread
+                if (r < silkRows - 1) {
+                    const down = silkNodes[idx + silkCols];
+                    ctx.beginPath();
+                    ctx.moveTo(n.x, n.y);
+                    ctx.lineTo(down.x, down.y);
+                    ctx.strokeStyle = tension > 0.15
+                        ? `rgba(${currentTheme.secondaryRgb}, ${(0.22 + tension * 0.65).toFixed(3)})`
+                        : `rgba(${currentTheme.strokeRgb}, 0.2)`;
+                    ctx.stroke();
+                }
+
+                // Luminous node intersection dot when displaced
+                if (tension > 0.08) {
+                    ctx.beginPath();
+                    ctx.arc(n.x, n.y, 1.8 + tension * 2.4, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${currentTheme.strokeRgb}, ${(0.35 + tension * 0.65).toFixed(3)})`;
+                    ctx.fill();
+                }
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 8. LOBBY 4: BUBBLE POP (Tactile Glossy Bubble Sheet + Particle Bursts)
+    // ----------------------------------------------------------------------------
+    let bubbles = [];
+    let popParticles = [];
+
+    function initBubbleGrid() {
+        bubbles = [];
+        const radius = width < 640 ? 22 : 26;
+        const spacingX = radius * 2.35;
+        const spacingY = radius * 2.15;
+
+        const marginTop = 96;
+        const marginBottom = 96;
+        const usableH = Math.max(150, height - marginTop - marginBottom);
+
+        const cols = Math.max(4, Math.floor((width - 48) / spacingX));
+        const rows = Math.max(3, Math.floor(usableH / spacingY));
+
+        const startX = (width - (cols - 1) * spacingX) / 2;
+        const startY = marginTop + (usableH - (rows - 1) * spacingY) / 2;
+
+        for (let r = 0; r < rows; r++) {
+            const rowOffset = (r % 2 === 1) ? spacingX * 0.25 : -spacingX * 0.25;
+            for (let c = 0; c < cols; c++) {
+                bubbles.push({
+                    x: startX + c * spacingX + rowOffset,
+                    y: startY + r * spacingY,
+                    radius,
+                    popped: false,
+                    popProgress: 0,
+                    refillTimer: 0,
+                    wobble: Math.random() * Math.PI * 2
+                });
+            }
+        }
+    }
+
+    function checkBubblePop(x, y) {
+        let poppedAny = false;
+        for (let i = 0; i < bubbles.length; i++) {
+            const b = bubbles[i];
+            if (!b.popped && Math.hypot(x - b.x, y - b.y) <= b.radius * 1.1) {
+                b.popped = true;
+                b.popProgress = 0.01;
+                b.refillTimer = 260; // Auto-reinflates gently after ~4.3 seconds
+                poppedAny = true;
+
+                // Crisp burst ring & droplets
+                for (let k = 0; k < 10; k++) {
+                    const ang = (Math.PI * 2 * k) / 10 + Math.random() * 0.3;
+                    const spd = 2.0 + Math.random() * 2.8;
+                    popParticles.push({
+                        x: b.x + Math.cos(ang) * (b.radius * 0.5),
+                        y: b.y + Math.sin(ang) * (b.radius * 0.5),
+                        vx: Math.cos(ang) * spd,
+                        vy: Math.sin(ang) * spd,
+                        life: 1.0,
+                        size: 2.2 + Math.random() * 2
+                    });
+                }
+
+                sound.playBubblePop(0.9 + (1 - b.y / height) * 0.25);
+            }
+        }
+        return poppedAny;
+    }
+
+    function updateAndDrawBubbles() {
+        for (let i = 0; i < bubbles.length; i++) {
+            const b = bubbles[i];
+            b.wobble += 0.03;
+
+            if (b.popped) {
+                if (b.popProgress < 1) {
+                    b.popProgress += 0.14;
+                }
+                b.refillTimer--;
+                if (b.refillTimer <= 0) {
+                    b.popped = false;
+                    b.popProgress = 0;
+                }
+
+                // Draw indented popped dimple
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius * 0.88, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(${currentTheme.strokeRgb}, 0.14)`;
+                ctx.lineWidth = 1.2;
+                ctx.stroke();
+
+                // Expanding pop shockwave
+                if (b.popProgress < 1) {
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, b.radius * (1 + b.popProgress * 0.55), 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(${currentTheme.secondaryRgb}, ${(1 - b.popProgress) * 0.7})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+                continue;
+            }
+
+            // Unpopped plump tactile bubble
+            const breathe = Math.sin(b.wobble) * 0.7;
+            const r = b.radius + breathe;
+
+            // Soft outer dome gradient
+            const grad = ctx.createRadialGradient(
+                b.x - r * 0.32, b.y - r * 0.32, r * 0.08,
+                b.x, b.y, r
+            );
+            grad.addColorStop(0, `rgba(${currentTheme.strokeRgb}, 0.34)`);
+            grad.addColorStop(0.65, `rgba(${currentTheme.secondaryRgb}, 0.14)`);
+            grad.addColorStop(1, `rgba(${currentTheme.strokeRgb}, 0.28)`);
+
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            ctx.strokeStyle = `rgba(${currentTheme.strokeRgb}, 0.45)`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Specular glossy highlight crescent
+            ctx.beginPath();
+            ctx.arc(b.x - r * 0.32, b.y - r * 0.32, r * 0.22, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${currentTheme.strokeRgb}, 0.55)`;
+            ctx.fill();
+        }
+
+        // Burst particles
+        popParticles = popParticles.filter(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.91;
+            p.vy *= 0.91;
+            p.life -= 0.045;
+            if (p.life <= 0) return false;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${currentTheme.strokeRgb}, ${p.life.toFixed(3)})`;
+            ctx.fill();
+            return true;
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 9. LOBBY 5: GRAVITY ORBS (Harmonic Luminous Orbiters + Collision Waves)
+    // ----------------------------------------------------------------------------
+    let orbs = [];
+    let orbPulses = [];
+
+    function spawnGravityOrb(x, y, vx = 0, vy = 0) {
+        const radius = 14 + Math.random() * 16;
+        orbs.push({
+            x, y,
+            vx: vx || (Math.random() - 0.5) * 3.5,
+            vy: vy || (Math.random() - 0.5) * 3.5,
+            radius,
+            mass: radius * radius,
+            trail: [],
+            glow: 0
+        });
+        if (orbs.length > 22) orbs.shift();
+        sound.playRippleChime(y / height, true);
+    }
+
+    function seedInitialOrbs() {
+        if (orbs.length === 0) {
+            spawnGravityOrb(width * 0.38, height * 0.45, 1.4, -1.1);
+            spawnGravityOrb(width * 0.62, height * 0.55, -1.3, 1.2);
+            spawnGravityOrb(width * 0.5, height * 0.32, 1.1, 0.9);
+        }
+    }
+
+    function updateAndDrawOrbs() {
+        const G = 0.035; // Gentle mutual attraction
+
+        for (let i = 0; i < orbs.length; i++) {
+            const a = orbs[i];
+
+            // Mutual gravitational attraction & elastic collisions
+            for (let j = i + 1; j < orbs.length; j++) {
+                const b = orbs[j];
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const dist = Math.hypot(dx, dy);
+                const minDist = a.radius + b.radius;
+
+                if (dist > 1) {
+                    // Gentle gravity pull when separated
+                    if (dist > minDist * 1.15) {
+                        const force = (G * (a.radius + b.radius)) / Math.max(90, dist);
+                        const fx = (dx / dist) * force;
+                        const fy = (dy / dist) * force;
+                        a.vx += fx;
+                        a.vy += fy;
+                        b.vx -= fx;
+                        b.vy -= fy;
+                    }
+
+                    // Elastic bounce + harmonic pulse wave on collision
+                    if (dist < minDist) {
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+                        const overlap = minDist - dist;
+
+                        a.x -= nx * overlap * 0.5;
+                        a.y -= ny * overlap * 0.5;
+                        b.x += nx * overlap * 0.5;
+                        b.y += ny * overlap * 0.5;
+
+                        const rvx = b.vx - a.vx;
+                        const rvy = b.vy - a.vy;
+                        const velAlongNormal = rvx * nx + rvy * ny;
+
+                        if (velAlongNormal < 0) {
+                            const restitution = 0.92;
+                            const impulse = -(1 + restitution) * velAlongNormal / (1 / a.mass + 1 / b.mass);
+                            a.vx -= (impulse / a.mass) * nx;
+                            a.vy -= (impulse / a.mass) * ny;
+                            b.vx += (impulse / b.mass) * nx;
+                            b.vy += (impulse / b.mass) * ny;
+
+                            const impactSpeed = Math.abs(velAlongNormal);
+                            if (impactSpeed > 0.45) {
+                                a.glow = 1.0;
+                                b.glow = 1.0;
+                                orbPulses.push({
+                                    x: (a.x + b.x) * 0.5,
+                                    y: (a.y + b.y) * 0.5,
+                                    r: 6,
+                                    maxR: 90 + impactSpeed * 18,
+                                    alpha: 0.75
+                                });
+                                sound.playOrbCollision(impactSpeed, (a.radius + b.radius) * 0.5);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Subtle attraction toward pointer when pressed
+            if (pointer.isDown) {
+                const pdx = pointer.x - a.x;
+                const pdy = pointer.y - a.y;
+                const pDist = Math.hypot(pdx, pdy);
+                if (pDist > 20) {
+                    a.vx += (pdx / pDist) * 0.16;
+                    a.vy += (pdy / pDist) * 0.16;
+                }
+            }
+
+            // Speed limit & gentle viscous damping
+            const speed = Math.hypot(a.vx, a.vy);
+            if (speed > 7.5) {
+                a.vx = (a.vx / speed) * 7.5;
+                a.vy = (a.vy / speed) * 7.5;
+            }
+            a.vx *= 0.996;
+            a.vy *= 0.996;
+
+            a.x += a.vx;
+            a.y += a.vy;
+            a.glow *= 0.92;
+
+            // Soft boundary bounce
+            if (a.x - a.radius < 0) { a.x = a.radius; a.vx *= -0.9; }
+            if (a.x + a.radius > width) { a.x = width - a.radius; a.vx *= -0.9; }
+            if (a.y - a.radius < 0) { a.y = a.radius; a.vy *= -0.9; }
+            if (a.y + a.radius > height) { a.y = height - a.radius; a.vy *= -0.9; }
+
+            // Record ribbon trail
+            a.trail.push({ x: a.x, y: a.y });
+            if (a.trail.length > 22) a.trail.shift();
+        }
+
+        // Draw collision harmonic waves
+        orbPulses = orbPulses.filter(p => {
+            p.r += 2.2;
+            p.alpha *= 0.94;
+            if (p.alpha <= 0.01) return false;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(${currentTheme.secondaryRgb}, ${p.alpha.toFixed(3)})`;
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+            return true;
+        });
+
+        // Draw subtle gravitational constellation tethers between nearby orbs
+        for (let i = 0; i < orbs.length; i++) {
+            for (let j = i + 1; j < orbs.length; j++) {
+                const d = Math.hypot(orbs[i].x - orbs[j].x, orbs[i].y - orbs[j].y);
+                if (d < 220) {
+                    const alpha = (1 - d / 220) * 0.22;
+                    ctx.beginPath();
+                    ctx.moveTo(orbs[i].x, orbs[i].y);
+                    ctx.lineTo(orbs[j].x, orbs[j].y);
+                    ctx.strokeStyle = `rgba(${currentTheme.strokeRgb}, ${alpha.toFixed(3)})`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Draw orbs & trails
+        for (let i = 0; i < orbs.length; i++) {
+            const o = orbs[i];
+
+            // Motion trail
+            for (let t = 1; t < o.trail.length; t++) {
+                const ratio = t / o.trail.length;
+                ctx.beginPath();
+                ctx.moveTo(o.trail[t - 1].x, o.trail[t - 1].y);
+                ctx.lineTo(o.trail[t].x, o.trail[t].y);
+                ctx.strokeStyle = `rgba(${currentTheme.secondaryRgb}, ${(ratio * 0.28).toFixed(3)})`;
+                ctx.lineWidth = o.radius * 0.45 * ratio;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+
+            // Luminous orb sphere
+            const grad = ctx.createRadialGradient(
+                o.x - o.radius * 0.3, o.y - o.radius * 0.3, o.radius * 0.1,
+                o.x, o.y, o.radius * (1.1 + o.glow * 0.35)
+            );
+            grad.addColorStop(0, `rgba(${currentTheme.strokeRgb}, 0.95)`);
+            grad.addColorStop(0.6, `rgba(${currentTheme.secondaryRgb}, 0.55)`);
+            grad.addColorStop(1, `rgba(${currentTheme.strokeRgb}, 0.12)`);
+
+            ctx.beginPath();
+            ctx.arc(o.x, o.y, o.radius, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = `rgba(${currentTheme.strokeRgb}, ${(0.45 + o.glow * 0.5).toFixed(3)})`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 10. UNIFIED INPUT HANDLERS (Mouse & Multi-Touch)
+    // ----------------------------------------------------------------------------
+    function handlePointerDown(x, y) {
+        pointer.isDown = true;
+        pointer.x = pointer.px = pointer.downX = pointer.lastSpawnX = x;
+        pointer.y = pointer.py = pointer.downY = pointer.lastSpawnY = y;
+
+        sound.init();
+
+        if (currentLobby === 'ripples') {
+            spawnZenRipple(x, y, true);
+        } else if (currentLobby === 'sand') {
+            dropZenPebble(x, y);
+        } else if (currentLobby === 'silk') {
+            impulseSilkGrid(x, y, 30);
+        } else if (currentLobby === 'bubbles') {
+            checkBubblePop(x, y);
+        }
+    }
+
+    function handlePointerMove(x, y) {
+        pointer.px = pointer.x;
+        pointer.py = pointer.y;
+        pointer.x = x;
+        pointer.y = y;
+
+        if (!pointer.isDown) return;
+
+        const distSinceSpawn = Math.hypot(x - pointer.lastSpawnX, y - pointer.lastSpawnY);
+
+        if (currentLobby === 'ripples') {
+            if (distSinceSpawn > 28) {
+                spawnZenRipple(x, y, false);
+                pointer.lastSpawnX = x;
+                pointer.lastSpawnY = y;
+            }
+        } else if (currentLobby === 'sand') {
+            carveSand(x, y, pointer.px, pointer.py);
+        } else if (currentLobby === 'bubbles') {
+            checkBubblePop(x, y);
+        }
+    }
+
+    function handlePointerUp(x, y) {
+        if (!pointer.isDown) return;
+        pointer.isDown = false;
+
+        if (currentLobby === 'orbs') {
+            const dx = (x - pointer.downX) * 0.045;
+            const dy = (y - pointer.downY) * 0.045;
+            spawnGravityOrb(pointer.downX, pointer.downY, dx, dy);
+        }
+    }
+
+    canvas.addEventListener('mousedown', e => handlePointerDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => handlePointerMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', e => handlePointerUp(e.clientX, e.clientY));
+
+    canvas.addEventListener('touchstart', e => {
+        if (e.touches.length > 0) {
+            const t = e.touches[0];
+            handlePointerDown(t.clientX, t.clientY);
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', e => {
+        if (e.touches.length > 0) {
+            const t = e.touches[0];
+            handlePointerMove(t.clientX, t.clientY);
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchend', e => {
+        handlePointerUp(pointer.x, pointer.y);
+    }, { passive: true });
+
+    // ----------------------------------------------------------------------------
+    // 11. UI CONTROLS, THEME SWITCHING & LOBBY SWITCHING
+    // ----------------------------------------------------------------------------
+    const colorSwatchesEl = document.getElementById('colorSwatches');
+    const lobbyDockEl = document.getElementById('lobbyDock');
+    const lobbyTitleEl = document.getElementById('lobbyTitle');
+    const lobbySubtitleEl = document.getElementById('lobbySubtitle');
+    const contextActionBtn = document.getElementById('contextActionBtn');
+    const contextActionLabel = document.getElementById('contextActionLabel');
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    const soundOnIcon = document.getElementById('soundOnIcon');
+    const soundOffIcon = document.getElementById('soundOffIcon');
+    const hideHudBtn = document.getElementById('hideHudBtn');
+    const revealHudBtn = document.getElementById('revealHudBtn');
+    const topHud = document.getElementById('topHud');
+    const bottomHud = document.getElementById('bottomHud');
+
+    function applyTheme(theme) {
+        currentTheme = theme;
+        document.body.style.backgroundColor = theme.bg;
+
+        // Style all glassmorphic HUD panels to match contrast
+        const panels = document.querySelectorAll('.glass-panel');
+        panels.forEach(panel => {
+            panel.style.backgroundColor = theme.hudBg;
+            panel.style.borderColor = theme.hudBorder;
+            panel.style.color = theme.hudText;
+        });
+
+        document.getElementById('statusDot').style.backgroundColor = theme.primary;
+
+        // Update swatch active rings
+        document.querySelectorAll('.swatch-btn').forEach(btn => {
+            const isSelected = btn.dataset.themeId === theme.id;
+            btn.classList.toggle('swatch-active', isSelected);
+            btn.style.boxShadow = isSelected
+                ? `0 0 0 2px ${theme.bg}, 0 0 0 4px ${theme.primary}`
+                : '0 2px 6px rgba(0,0,0,0.22)';
+        });
+
+        updateLobbyDockStyles();
+    }
+
+    function updateLobbyDockStyles() {
+        document.querySelectorAll('.lobby-tab').forEach(btn => {
+            const active = btn.dataset.lobbyId === currentLobby;
+            if (active) {
+                btn.style.backgroundColor = currentTheme.isDark
+                    ? 'rgba(255, 255, 255, 0.16)'
+                    : 'rgba(15, 23, 42, 0.1)';
+                btn.style.color = currentTheme.hudText;
+                btn.style.fontWeight = '600';
+            } else {
+                btn.style.backgroundColor = 'transparent';
+                btn.style.color = currentTheme.hudText;
+                btn.style.opacity = '0.72';
+                btn.style.fontWeight = '400';
+            }
+            if (active) btn.style.opacity = '1';
+        });
+    }
+
+    function switchLobby(lobbyId) {
+        currentLobby = lobbyId;
+        const meta = LOBBIES.find(l => l.id === lobbyId);
+        if (meta) {
+            lobbyTitleEl.textContent = meta.name;
+            lobbySubtitleEl.textContent = meta.subtitle;
+            contextActionLabel.textContent = meta.actionLabel;
+        }
+
+        // Seed welcome visual on lobby switch
+        if (lobbyId === 'ripples') {
+            spawnZenRipple(width * 0.5, height * 0.5, true);
+        } else if (lobbyId === 'silk' && silkNodes.length === 0) {
+            initSilkGrid();
+        } else if (lobbyId === 'bubbles' && bubbles.length === 0) {
+            initBubbleGrid();
+        } else if (lobbyId === 'orbs') {
+            seedInitialOrbs();
+        }
+
+        updateLobbyDockStyles();
+    }
+
+    function buildUI() {
+        // Build 8 Solid Color Swatches
+        THEMES.forEach(theme => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.dataset.themeId = theme.id;
+            btn.title = theme.name;
+            btn.setAttribute('aria-label', `Background: ${theme.name}`);
+            btn.className = 'swatch-btn w-6 h-6 sm:w-6 sm:h-6 rounded-full border border-white/30 cursor-pointer flex-shrink-0';
+            btn.style.backgroundColor = theme.bg;
+            btn.addEventListener('click', () => applyTheme(theme));
+            colorSwatchesEl.appendChild(btn);
+        });
+
+        // Build 5 Satisfying Lobby Buttons
+        LOBBIES.forEach(lobby => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.dataset.lobbyId = lobby.id;
+            btn.className = 'lobby-tab px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer active:scale-95';
+            btn.innerHTML = `${lobby.icon}<span>${lobby.name}</span>`;
+            btn.addEventListener('click', () => switchLobby(lobby.id));
+            lobbyDockEl.appendChild(btn);
+        });
+
+        // Contextual Reset / Refill Action
+        contextActionBtn.addEventListener('click', () => {
+            if (currentLobby === 'ripples') {
+                ripples = [];
+                rippleDroplets = [];
+                spawnZenRipple(width / 2, height / 2, true);
+            } else if (currentLobby === 'sand') {
+                sandStrokes = [];
+                pebbles = [];
+                sandParticles = [];
+            } else if (currentLobby === 'silk') {
+                initSilkGrid();
+            } else if (currentLobby === 'bubbles') {
+                initBubbleGrid();
+                sound.playRippleChime(0.7, true);
+            } else if (currentLobby === 'orbs') {
+                orbs = [];
+                orbPulses = [];
+                seedInitialOrbs();
+            }
+        });
+
+        // Sound Mute / Unmute Toggle
+        soundToggleBtn.addEventListener('click', () => {
+            const isOn = sound.toggle();
+            soundOnIcon.classList.toggle('hidden', !isOn);
+            soundOffIcon.classList.toggle('hidden', isOn);
+        });
+
+        // Hide / Show HUD for pure zen immersion
+        function setHudVisibility(visible) {
+            hudVisible = visible;
+            topHud.classList.toggle('hud-top-hidden', !visible);
+            bottomHud.classList.toggle('hud-hidden', !visible);
+            if (!visible) {
+                revealHudBtn.classList.remove('opacity-0', 'pointer-events-none');
+            } else {
+                revealHudBtn.classList.add('opacity-0', 'pointer-events-none');
+            }
+        }
+
+        hideHudBtn.addEventListener('click', () => setHudVisibility(false));
+        revealHudBtn.addEventListener('click', () => setHudVisibility(true));
+
+        window.addEventListener('keydown', e => {
+            if (e.key.toLowerCase() === 'h') setHudVisibility(!hudVisible);
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 12. MAIN 60FPS ANIMATION LOOP
+    // ----------------------------------------------------------------------------
+    function animate() {
+        ctx.clearRect(0, 0, width, height);
+
+        switch (currentLobby) {
+            case 'ripples':
+                updateAndDrawRipples();
+                break;
+            case 'sand':
+                updateAndDrawSand();
+                break;
+            case 'silk':
+                updateAndDrawSilk();
+                break;
+            case 'bubbles':
+                updateAndDrawBubbles();
+                break;
+            case 'orbs':
+                updateAndDrawOrbs();
+                break;
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    // Initialize Application
+    window.addEventListener('resize', resizeCanvas);
+    window.onload = function () {
+        resizeCanvas();
+        buildUI();
+        applyTheme(THEMES[0]);
+        switchLobby('ripples');
+        animate();
+    };
+    </script>
+</body>
+</html>
